@@ -10,7 +10,17 @@ pub fn start_day(day: &str) {
 pub type Position = (usize, usize);
 pub type Rectangle = (Position, Position);
 
+pub type AbsolutePosition = (isize, isize);
+pub type AbsoluteRectangle = (crate::AbsolutePosition, crate::AbsolutePosition);
+
 pub fn rectangle_includes(rectangle: &Rectangle, pos: Position) -> bool {
+    pos.0 >= rectangle.0 .0
+        && pos.1 >= rectangle.0 .1
+        && pos.0 <= rectangle.1 .0
+        && pos.1 <= rectangle.1 .1
+}
+
+pub fn arectangle_includes(rectangle: &AbsoluteRectangle, pos: AbsolutePosition) -> bool {
     pos.0 >= rectangle.0 .0
         && pos.1 >= rectangle.0 .1
         && pos.0 <= rectangle.1 .0
@@ -106,6 +116,20 @@ pub fn leap(pos: Position, dir: Direction, dist: usize) -> Option<Position> {
     }
 }
 
+pub fn aleap(pos: AbsolutePosition, dir: Direction, dist: isize) -> AbsolutePosition {
+    use Direction::*;
+    match dir {
+        N => (pos.0 - dist, pos.1),
+        S => (pos.0 + dist, pos.1),
+        W => (pos.0, pos.1 - dist),
+        E => (pos.0, pos.1 + dist),
+        NE => (pos.0 - dist, pos.1 + dist),
+        NW => (pos.0 - dist, pos.1 - dist),
+        SE => (pos.0 + dist, pos.1 + dist),
+        SW => (pos.0 + dist, pos.1 - dist),
+    }
+}
+
 pub fn leap_in_bounds(
     pos: Position,
     dir: Direction,
@@ -114,6 +138,21 @@ pub fn leap_in_bounds(
 ) -> Option<Position> {
     leap(pos, dir, dist).filter(|np| rectangle_includes(area, *np))
 }
+
+pub fn aleap_in_bounds(
+    pos: AbsolutePosition,
+    dir: Direction,
+    dist: isize,
+    area: &AbsoluteRectangle,
+) -> Option<AbsolutePosition> {
+    let np = aleap(pos, dir, dist);
+    if arectangle_includes(area, np) {
+        Some(np)
+    } else {
+        None
+    }
+}
+
 
 pub fn beam(pos: Position, dir: Direction, len: usize, border: Position) -> Option<Vec<Position>> {
     match dir {
