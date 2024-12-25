@@ -92,7 +92,7 @@ impl TileMap {
         let area = ((0, 0), size);
         let mut map = Self {
             area,
-            tiles: Vec::with_capacity(area.1.0 as usize),
+            tiles: Vec::with_capacity(area.1 .0 as usize),
         };
         for i in 0..area.1 .0 {
             if i == 0 || i == area.1 .0 - 1 {
@@ -137,7 +137,7 @@ impl TileMap {
         for (i, row) in self.tiles.iter().enumerate() {
             for (j, tile) in row.iter().copied().enumerate() {
                 if target_tiles.contains(&tile) {
-                    positions.push((i as isize , j as isize));
+                    positions.push((i as isize, j as isize));
                 }
             }
         }
@@ -292,7 +292,7 @@ fn apply_moves(mut map: TileMap, directions: &[Direction]) -> TileMap {
 
         for lane in lanes.values() {
             for i in (1..lane.tiles.len()).rev() {
-                map.swap_tiles(lane.tiles[i], lane.tiles[i-1]);
+                map.swap_tiles(lane.tiles[i], lane.tiles[i - 1]);
             }
         }
         robot = aleap(robot, dir, 1);
@@ -379,7 +379,8 @@ mod tests {
 
     #[test]
     fn test_part2() {
-        let answer = part2(r#"#######
+        let answer = part2(
+            r#"#######
 #...#.#
 #.....#
 #..OO@#
@@ -387,7 +388,10 @@ mod tests {
 #.....#
 #######
 
-<vv<<^^<<^^"#.as_bytes()).unwrap();
+<vv<<^^<<^^"#
+                .as_bytes(),
+        )
+        .unwrap();
         assert_eq!(618, answer);
     }
 

@@ -1,16 +1,15 @@
-use std::collections::{HashMap, HashSet};
 use adv_code_2024::*;
 use anyhow::*;
 use code_timing_macros::time_snippet;
 use const_format::concatcp;
+use itertools::Itertools;
+use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::result::Result::Ok;
-use itertools::Itertools;
 
-use termion::{clear, cursor, event::Key, input::TermRead, raw::IntoRawMode};
 use std::{thread, time};
-
+use termion::{clear, cursor, event::Key, input::TermRead, raw::IntoRawMode};
 
 const DAY: &str = "14";
 const INPUT_FILE: &str = concatcp!("input/", DAY, ".txt");
@@ -45,7 +44,10 @@ impl Robot {
             new_y += area.1;
         }
 
-        Robot { position: (new_x, new_y), ..self }
+        Robot {
+            position: (new_x, new_y),
+            ..self
+        }
     }
 
     fn quadrant(&self, area: (isize, isize)) -> Option<u8> {
@@ -74,28 +76,44 @@ fn read_input<R: BufRead>(input: R) -> Result<(Vec<Robot>, (isize, isize))> {
                 let position = position[2..].split_once(",")?;
                 let velocity = velocity[2..].split_once(",")?;
                 let robot = Robot {
-                    position: (position.0.parse::<isize>().ok()?, position.1.parse::<isize>().ok()?),
-                    velocity: (velocity.0.parse::<isize>().ok()?, velocity.1.parse::<isize>().ok()?),
+                    position: (
+                        position.0.parse::<isize>().ok()?,
+                        position.1.parse::<isize>().ok()?,
+                    ),
+                    velocity: (
+                        velocity.0.parse::<isize>().ok()?,
+                        velocity.1.parse::<isize>().ok()?,
+                    ),
                 };
                 Some(robot)
             }
-            _ => None
+            _ => None,
         })
         .collect_vec();
 
-    let max_x = robots.iter().map(|robot| robot.position.0).max().unwrap_or_default();
-    let max_y = robots.iter().map(|robot| robot.position.1).max().unwrap_or_default();
+    let max_x = robots
+        .iter()
+        .map(|robot| robot.position.0)
+        .max()
+        .unwrap_or_default();
+    let max_y = robots
+        .iter()
+        .map(|robot| robot.position.1)
+        .max()
+        .unwrap_or_default();
     Ok((robots, (max_x + 1, max_y + 1)))
 }
 
-
 fn find_pattern(
-    positions: impl Iterator<Item=(isize, isize)>,
+    positions: impl Iterator<Item = (isize, isize)>,
     pattern: &[(isize, isize)],
 ) -> bool {
     let positions: HashSet<_> = positions.collect();
     for (x, y) in positions.iter().copied() {
-        if pattern.iter().all(|(dx, dy)| positions.contains(&(x + dx, y + dy))) {
+        if pattern
+            .iter()
+            .all(|(dx, dy)| positions.contains(&(x + dx, y + dy)))
+        {
             return true;
         }
     }
@@ -116,8 +134,8 @@ fn inspect_manually(robots: Vec<Robot>, area: (isize, isize)) -> Result<()> {
         write!(
             stdout,
             "{}{}",
-            clear::All,          // Clear the screen
-            cursor::Goto(1, 1)   // Move to top-left corner
+            clear::All,         // Clear the screen
+            cursor::Goto(1, 1)  // Move to top-left corner
         )?;
 
         let positions = robots
@@ -136,7 +154,11 @@ fn inspect_manually(robots: Vec<Robot>, area: (isize, isize)) -> Result<()> {
             }
             writeln!(stdout, "\r{}", buffer)?; // Use '\r' to ensure correct alignment
         }
-        writeln!(stdout, "\n\rSeconds {}. Press Left/Right to navigate, 'q' to quit.", seconds)?;
+        writeln!(
+            stdout,
+            "\n\rSeconds {}. Press Left/Right to navigate, 'q' to quit.",
+            seconds
+        )?;
         stdout.flush()?;
 
         if let Some(Ok(key)) = keys.next() {
@@ -166,7 +188,6 @@ fn inspect_manually(robots: Vec<Robot>, area: (isize, isize)) -> Result<()> {
 
     Ok(())
 }
-
 
 fn main() -> Result<()> {
     start_day(DAY);
@@ -209,21 +230,28 @@ fn main() -> Result<()> {
         let mut seconds = 0;
 
         let pattern = vec![
-                                      (0, 0),
-                             (-1, 1), (0, 1), (1, 1),
-                    (-2, 2), (-1, 2), (0, 2), (1, 2), (2, 2),
-           (-3, 3), (-2, 3), (-1, 3), (0, 3), (1, 3), (2, 3), (2, 3),
+            (0, 0),
+            (-1, 1),
+            (0, 1),
+            (1, 1),
+            (-2, 2),
+            (-1, 2),
+            (0, 2),
+            (1, 2),
+            (2, 2),
+            (-3, 3),
+            (-2, 3),
+            (-1, 3),
+            (0, 3),
+            (1, 3),
+            (2, 3),
+            (2, 3),
         ];
 
         loop {
             seconds += 1;
-            robots.iter_mut().for_each(|r| {
-                *r = r.simulate(1, area)
-            });
-            let found = find_pattern(
-                robots.iter().map(|r| r.position),
-                &pattern,
-            );
+            robots.iter_mut().for_each(|r| *r = r.simulate(1, area));
+            let found = find_pattern(robots.iter().map(|r| r.position), &pattern);
             if found {
                 return Ok(seconds);
             }
@@ -238,14 +266,16 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-
 #[cfg(test)]
 mod tests {
     use crate::{find_pattern, Robot};
 
     #[test]
     fn test_simulate_robot() {
-        let robot = Robot { position: (2,4), velocity: (2, -3)};
+        let robot = Robot {
+            position: (2, 4),
+            velocity: (2, -3),
+        };
         let area = (11, 7);
 
         // p=(2,4), v=(2,-3); area: (11, 7)
@@ -263,24 +293,51 @@ mod tests {
         let velocity = (0, 0);
         let area = (11, 7);
 
-        assert_eq!(Robot { position: (0, 2), velocity}.quadrant(area), Some(0));
-        assert_eq!(Robot { position: (6, 0), velocity}.quadrant(area), Some(1));
-        assert_eq!(Robot { position: (3, 5), velocity}.quadrant(area), Some(2));
-        assert_eq!(Robot { position: (6, 6), velocity}.quadrant(area), Some(3));
+        assert_eq!(
+            Robot {
+                position: (0, 2),
+                velocity
+            }
+            .quadrant(area),
+            Some(0)
+        );
+        assert_eq!(
+            Robot {
+                position: (6, 0),
+                velocity
+            }
+            .quadrant(area),
+            Some(1)
+        );
+        assert_eq!(
+            Robot {
+                position: (3, 5),
+                velocity
+            }
+            .quadrant(area),
+            Some(2)
+        );
+        assert_eq!(
+            Robot {
+                position: (6, 6),
+                velocity
+            }
+            .quadrant(area),
+            Some(3)
+        );
     }
 
     #[test]
     fn test_find_pattern() {
         let pattern = vec![
-                     (0, 0),
-            (-1, 1), (0, 1), (1, 1),
+            (0, 0),
+            (-1, 1),
+            (0, 1),
+            (1, 1),
             // (-2, 2), (-1, 2), (0, 2), (1, 2), (2, 2),
         ];
         let found = find_pattern(
-            vec![
-                      (45, 23),
-            (44, 24), (45, 24), (46, 24),
-            ].into_iter(),
+            vec![(45, 23), (44, 24), (45, 24), (46, 24)].into_iter(),
             &pattern,
         );
         assert_eq!(true, found);

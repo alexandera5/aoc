@@ -153,7 +153,6 @@ pub fn aleap_in_bounds(
     }
 }
 
-
 pub fn beam(pos: Position, dir: Direction, len: usize, border: Position) -> Option<Vec<Position>> {
     match dir {
         Direction::N => {
