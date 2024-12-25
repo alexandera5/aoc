@@ -2,11 +2,12 @@ use adv_code_2024::*;
 use anyhow::*;
 use code_timing_macros::time_snippet;
 use const_format::concatcp;
+use itertools::Itertools;
+use std::collections::BTreeMap;
+use std::fmt::Display;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::result::Result::Ok;
-use itertools::Itertools;
-
 
 const DAY: &str = "15";
 const INPUT_FILE: &str = concatcp!("input/", DAY, ".txt");
@@ -55,47 +56,99 @@ impl Tile {
             _ => Err(anyhow!("invalid tile: {}", c)),
         }
     }
+
+    fn as_char(&self) -> char {
+        match self {
+            Tile::Wall => '#',
+            Tile::Box => 'O',
+            Tile::WBox1 => '[',
+            Tile::WBox2 => ']',
+            Tile::Robot => '@',
+            Tile::Space => '.',
+        }
+    }
 }
 
 #[derive(Debug)]
 struct TileMap {
     tiles: Vec<Vec<Tile>>,
-    area: Rectangle,
+    area: AbsoluteRectangle,
+}
+
+impl Display for TileMap {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        for row in self.tiles.iter() {
+            for tile in row.iter() {
+                write!(f, "{}", tile.as_char())?;
+            }
+            writeln!(f)?;
+        }
+        Ok(())
+    }
 }
 
 impl TileMap {
-    fn get_tile(&self, pos: Position) -> Option<Tile> {
-        self.tiles.get(pos.0).and_then(|row| row.get(pos.1).copied())
+    fn new(size: (isize, isize), tiles: &[(Tile, AbsolutePosition)]) -> Self {
+        let area = ((0, 0), size);
+        let mut map = Self {
+            area,
+            tiles: Vec::with_capacity(area.1.0 as usize),
+        };
+        for i in 0..area.1 .0 {
+            if i == 0 || i == area.1 .0 - 1 {
+                map.tiles.push(vec![Tile::Wall; area.1 .1 as usize]);
+            } else {
+                let mut row = Vec::with_capacity(area.1 .1 as usize);
+                for j in 0..area.1 .1 {
+                    if j == 0 || j == area.1 .1 - 1 {
+                        row.push(Tile::Wall);
+                    } else {
+                        row.push(Tile::Space);
+                    }
+                }
+                map.tiles.push(row);
+            }
+        }
+        for (tile, pos) in tiles {
+            map.tiles[pos.0 as usize][pos.1 as usize] = *tile;
+        }
+        map
     }
 
-    fn find_first(&self, target_tile: Tile) -> Option<Position> {
+    fn get_tile(&self, pos: AbsolutePosition) -> Option<Tile> {
+        self.tiles
+            .get(pos.0 as usize)
+            .and_then(|row| row.get(pos.1 as usize).copied())
+    }
+
+    fn find_first(&self, target_tile: Tile) -> Option<AbsolutePosition> {
         for (i, row) in self.tiles.iter().enumerate() {
             for (j, tile) in row.iter().copied().enumerate() {
                 if tile == target_tile {
-                    return Some((i, j));
+                    return Some((i as isize, j as isize));
                 }
             }
         }
         None
     }
 
-    fn find_all(&self, target_tile: Tile) -> Vec<Position> {
+    fn find_all(&self, target_tiles: &[Tile]) -> Vec<AbsolutePosition> {
         let mut positions = Vec::new();
         for (i, row) in self.tiles.iter().enumerate() {
             for (j, tile) in row.iter().copied().enumerate() {
-                if tile == target_tile {
-                    positions.push((i, j));
+                if target_tiles.contains(&tile) {
+                    positions.push((i as isize , j as isize));
                 }
             }
         }
         positions
     }
 
-    fn swap_tiles(&mut self, src: Position, dst: Position) {
-        let src_tile = self.tiles[src.0][src.1];
-        let dst_tile = self.tiles[dst.0][dst.1];
-        self.tiles[src.0][src.1] = dst_tile;
-        self.tiles[dst.0][dst.1] = src_tile;
+    fn swap_tiles(&mut self, src: AbsolutePosition, dst: AbsolutePosition) {
+        let src_tile = self.tiles[src.0 as usize][src.1 as usize];
+        let dst_tile = self.tiles[dst.0 as usize][dst.1 as usize];
+        self.tiles[src.0 as usize][src.1 as usize] = dst_tile;
+        self.tiles[dst.0 as usize][dst.1 as usize] = src_tile;
     }
 
     fn widen(&self) -> Self {
@@ -125,7 +178,7 @@ impl TileMap {
                     other => {
                         new_row.push(other);
                         new_row.push(other);
-                    },
+                    }
                 }
             }
             new_tiles.push(new_row);
@@ -133,7 +186,7 @@ impl TileMap {
 
         Self {
             tiles: new_tiles,
-            area: (self.area.0, (self.area.1.0 * 2, self.area.1.1 * 2)),
+            area: (self.area.0, (self.area.1 .0, self.area.1 .1 * 2)),
         }
     }
 }
@@ -165,7 +218,7 @@ fn read_input<R: BufRead>(input: R) -> Result<(TileMap, Vec<Direction>)> {
     if let Some(directions) = directions {
         let map = TileMap {
             tiles,
-            area: ((0, 0), (max_i, max_j)),
+            area: ((0, 0), (max_i as isize, max_j as isize)),
         };
         Ok((map, directions))
     } else {
@@ -173,49 +226,76 @@ fn read_input<R: BufRead>(input: R) -> Result<(TileMap, Vec<Direction>)> {
     }
 }
 
+#[derive(Default)]
+struct Lane {
+    target: Option<AbsolutePosition>,
+    tiles: Vec<AbsolutePosition>,
+}
+
 fn apply_moves(mut map: TileMap, directions: &[Direction]) -> TileMap {
     let mut robot = map.find_first(Tile::Robot).expect("robot exists");
 
-    let mut moved_tiles = vec![];
     for dir in directions.iter().copied() {
         // Leap in direction
         // Case 0: Space, stop and move all tiles to this pos. @.
         // Case 1: Wall, stop: @#
         // Case 2: Box, add to moved: @O
 
-        let mut target_pos = None;
-        moved_tiles.clear();
-        moved_tiles.push(robot);
+        let mut lanes: BTreeMap<i8, Lane> = BTreeMap::new();
+        lanes.entry(0).or_default().tiles.push(robot);
 
-        let mut moved_pos = robot;
-        loop {
-            let next_pos = leap_in_bounds(moved_pos, dir, 1, &map.area);
-            match next_pos.and_then(|p| map.get_tile(p)) {
-                Some(Tile::Box) | Some(Tile::WBox1) | Some(Tile::WBox2) => {
-                    moved_tiles.push(next_pos.unwrap());
-                    moved_pos = next_pos.unwrap();
-                },
-                Some(Tile::Space) => {
-                    target_pos = next_pos;
-                    break;
-                }
-                _ => {
-                    moved_tiles.clear();
-                    break;
+        let mut step_pos = robot;
+        'step: while let Some(next_pos) = aleap_in_bounds(step_pos, dir, 1, &map.area) {
+            let mut n_spaces = 0;
+            for lane in lanes.keys().cloned().collect_vec() {
+                let lane_pos = aleap(next_pos, dir.turn_right(), lane as isize);
+                let lane_tile = map.get_tile(lane_pos);
+
+                match lane_tile {
+                    Some(Tile::Box) => {
+                        lanes.entry(lane).or_default().tiles.push(lane_pos);
+                    }
+                    Some(Tile::WBox1) | Some(Tile::WBox2) => {
+                        lanes.entry(lane).or_default().tiles.push(lane_pos);
+
+                        let new_lane = match (lane_tile, dir) {
+                            (Some(Tile::WBox1), Direction::N) => Some(lane + 1),
+                            (Some(Tile::WBox2), Direction::N) => Some(lane - 1),
+                            (Some(Tile::WBox1), Direction::S) => Some(lane - 1),
+                            (Some(Tile::WBox2), Direction::S) => Some(lane + 1),
+                            _ => None,
+                        };
+                        if let Some(new_lane) = new_lane {
+                            let new_lane_pos = aleap(next_pos, dir.turn_right(), new_lane as isize);
+                            lanes.entry(new_lane).or_default().tiles.push(new_lane_pos);
+                        }
+                    }
+                    Some(Tile::Space) => {
+                        n_spaces += 1;
+                        lanes.entry(lane).or_default().tiles.push(lane_pos);
+                    }
+                    _ => {
+                        lanes.clear();
+                        break 'step;
+                    }
                 }
             }
+
+            if n_spaces == lanes.len() {
+                break;
+            }
+            step_pos = next_pos;
+        }
+        if lanes.is_empty() {
+            continue;
         }
 
-        if let Some(mut target_pos) = target_pos {
-            for i in (0..moved_tiles.len()).rev() {
-                map.swap_tiles(moved_tiles[i], target_pos);
-                if i == 0 {
-                    robot = target_pos;
-                } else {
-                    target_pos = moved_tiles[i];
-                }
+        for lane in lanes.values() {
+            for i in (1..lane.tiles.len()).rev() {
+                map.swap_tiles(lane.tiles[i], lane.tiles[i-1]);
             }
         }
+        robot = aleap(robot, dir, 1);
     }
 
     map
@@ -227,15 +307,27 @@ fn part1<R: BufRead>(reader: R) -> Result<usize> {
     println!("Map: {:?}, robot: {:?}", map.area, robot_pos);
 
     let map = apply_moves(map, &directions);
-    let answer = map.find_all(Tile::Box).into_iter().map(|(x, y)| x * 100 + y).sum();
+    let answer = map
+        .find_all(&[Tile::Box])
+        .into_iter()
+        .map(|(x, y)| x as usize * 100 + y as usize)
+        .sum();
     Ok(answer)
 }
 
 fn part2<R: BufRead>(reader: R) -> Result<usize> {
     let (map, directions) = read_input(reader)?;
-    let map = map.widen();
-    let map = apply_moves(map, &directions);
-    let answer = map.find_all(Tile::WBox1).into_iter().map(|(x, y)| x * 100 + y).sum();
+    let mut map = map.widen();
+    println!("Initial:\n{}", map);
+    for dir in directions {
+        map = apply_moves(map, &[dir]);
+        println!("Move: {:?}\n{}", dir, map);
+    }
+    let answer = map
+        .find_all(&[Tile::WBox1])
+        .into_iter()
+        .map(|(x, y)| x as usize * 100 + y as usize)
+        .sum();
     Ok(answer)
 }
 
@@ -249,11 +341,12 @@ fn main() -> Result<()> {
     let input_file = BufReader::new(File::open(INPUT_FILE)?);
     let result = time_snippet!(part1(input_file)?);
     println!("Result = {}", result);
+    assert_eq!(1497888, result);
     //endregion
 
     // region Part 2
     println!("\n=== Part 2 ===");
-    assert_eq!(10092, part2(BufReader::new(TEST.as_bytes()))?);
+    assert_eq!(9021, part2(BufReader::new(TEST.as_bytes()))?);
 
     let input_file = BufReader::new(File::open(INPUT_FILE)?);
     let result = time_snippet!(part2(input_file)?);
@@ -286,7 +379,59 @@ mod tests {
 
     #[test]
     fn test_part2() {
-        let answer = part2(TEST.as_bytes()).unwrap();
-        assert_eq!(9021, answer);
+        let answer = part2(r#"#######
+#...#.#
+#.....#
+#..OO@#
+#..O..#
+#.....#
+#######
+
+<vv<<^^<<^^"#.as_bytes()).unwrap();
+        assert_eq!(618, answer);
+    }
+
+    #[test]
+    fn test_apply_moves() {
+        let map = TileMap::new(
+            (7, 7),
+            &vec![
+                (Tile::Wall, (1, 4)),
+                (Tile::Box, (3, 3)),
+                (Tile::Box, (3, 4)),
+                (Tile::Box, (4, 3)),
+                (Tile::Robot, (3, 5)),
+            ],
+        );
+
+        let wide_map = map.widen();
+        assert_eq!(
+            wide_map.find_all(&[Tile::WBox1]),
+            vec![(3, 6), (3, 8), (4, 6)]
+        );
+
+        let wide_map = apply_moves(
+            wide_map,
+            &vec![
+                Direction::W,
+                Direction::S,
+                Direction::S,
+                Direction::W,
+                Direction::W,
+            ],
+        );
+        assert_eq!(
+            wide_map.find_all(&[Tile::WBox1]),
+            vec![(3, 5), (3, 7), (4, 6)]
+        );
+        assert_eq!(wide_map.find_first(Tile::Robot), Some((5, 7)));
+
+        let move_2 = vec![Direction::N, Direction::N];
+        let wide_map = apply_moves(wide_map, &move_2);
+        assert_eq!(
+            wide_map.find_all(&[Tile::WBox1]),
+            vec![(2, 5), (2, 7), (3, 6)]
+        );
+        assert_eq!(wide_map.find_first(Tile::Robot), Some((4, 7)));
     }
 }
